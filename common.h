@@ -134,7 +134,7 @@ extern "C" {
 #define GOTO_ATOM ATOM
 #undef  ATOM
 #endif
-#include <windows.h>
+//#include <windows.h>
 #include <math.h>
 #ifdef  GOTO_ATOM
 #define ATOM GOTO_ATOM

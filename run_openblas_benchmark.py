@@ -22,7 +22,7 @@ RESULT_CSV = RESULT_DIR / "openblas_results.csv"
 AVERAGE_CSV = RESULT_DIR / "openblas_averages.csv"
 PLOT_FILE = RESULT_DIR / "openblas_plot.png"
 
-SIZES = [16, 128, 1024, 8192]
+SIZES = [16, 128, 1024]
 RUNS_PER_SIZE = 10
 
 DURATION_PATTERNS = (
@@ -100,7 +100,7 @@ def run_cycle(size: int, rep: int, generator_exe: Path, ob_exe: Path) -> dict[st
 
 def compute_averages(rows: list[dict[str, int]]) -> list[dict[str, float]]:
     grouped: dict[int, dict[str, int]] = {
-        size: {"count": 0, "ob_total": 0, "ob3_total": 0} for size in SIZES
+        size: {"count": 0, "ob_total": 0} for size in SIZES
     }
 
     for row in rows:
@@ -147,7 +147,7 @@ def draw_grouped_bar_chart(averages: list[dict[str, float]]) -> None:
     group_step = 1.8
     bar_width = 0.34
     x_centers = [index * group_step for index in range(len(averages))]
-    ob_positions = [x - bar_width / 2 for x in x_centers]
+    ob_positions = [x for x in x_centers]
 
     plt.figure(figsize=(10, 6))
     plt.bar(ob_positions, ob_values, width=bar_width, label="ob.exe average")
