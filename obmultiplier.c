@@ -21,10 +21,11 @@
 struct Matrix { 
     size_t rows; 
     size_t cols; 
-    float * data; 
+    double * data; 
 };
 
-static float *matrix_at(struct Matrix *m, size_t row, size_t col) {
+
+static double *matrix_at(struct Matrix *m, size_t row, size_t col) {
     if (m == NULL || m->data == NULL || row >= m->rows || col >= m->cols) {
         return NULL;
     }
@@ -43,7 +44,7 @@ static int matrix_init(struct Matrix *m, size_t rows, size_t cols) {
     }
     count = rows * cols;
 
-    m->data = (float *)calloc(count, sizeof(float));
+    m->data = (double *)calloc(count, sizeof(double));
     if (m->data == NULL) {
         m->rows = 0;
         m->cols = 0;
@@ -65,11 +66,11 @@ static int matrix_read(struct Matrix *m, FILE *in) {
 
     for (i = 0; i < m->rows; i++) {
         for (j = 0; j < m->cols; j++) {
-            float *slot = matrix_at(m, i, j);
+            double *slot = matrix_at(m, i, j);
             if (slot == NULL) {
                 return -1;
             }
-            if (fscanf(in, "%f", slot) != 1) {   //读入一个浮点数到slot位置
+            if (fscanf(in, "%lf", slot) != 1) {   //读入一个浮点数到slot位置
                 return -1;
             }
         }

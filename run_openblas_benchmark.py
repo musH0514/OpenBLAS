@@ -1,3 +1,4 @@
+#LD_LIBRARY_PATH=. python run_openblas_benchmark.py
 from __future__ import annotations
 
 import argparse
