@@ -1,19 +1,4 @@
 //gcc -O3 -I. obmultiplier.c -o ob -L. -l:libopenblas.so.0 -lpthread
-/*
- * mygemm : a minimal program that reads two matrices from an input file
- *          and computes C = A * B using OpenBLAS (cblas_dgemm), with timing.
- *
- * Input file format (plain text):
- *   line 1 : m n k            (dimensions)
- *   next   : m*k doubles, the A matrix in ROW-MAJOR order
- *   next   : k*n doubles, the B matrix in ROW-MAJOR order
- *
- * Usage:
- *   mygemm.exe < input.in
- *   mygemm.exe input.in
- *
- * Timing: warmup + repeats (OPENBLAS_LOOPS, default 3), reports best time.
- */
 
 #include <stdio.h>
 #include <stdlib.h>
