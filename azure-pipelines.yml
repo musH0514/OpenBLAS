@@ -190,6 +190,7 @@ jobs:
       make CC=gcc-15 FC=gfortran-15
 
 - job: OSX_LLVM_flangnew
+  timeoutInMinutes: 100
   pool:
      vmImage: 'macOS-latest'
   variables:
@@ -203,6 +204,7 @@ jobs:
       make TARGET=NEHALEM CC=/usr/local/opt/llvm/bin/clang FC=/usr/local/opt/flang/bin/flang NO_SHARED=1
 
 - job: OSX_OpenMP_Clang
+  timeoutInMinutes: 100
   pool:
      vmImage: 'macOS-latest'
   variables:
@@ -216,6 +218,7 @@ jobs:
       make TARGET=CORE2 USE_OPENMP=1 DYNAMIC_ARCH=1 DYNAMIC_LIST='NEHALEM HASWELL SKYLAKEX' CC=/usr/local/opt/llvm/bin/clang NOFORTRAN=1
 
 - job: OSX_OpenMP_Clang_cmake
+  timeoutInMinutes: 100
   pool:
      vmImage: 'macOS-latest'
   variables:
