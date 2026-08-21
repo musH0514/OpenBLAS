@@ -38,27 +38,15 @@
 
 #include "common.h"
 
-static FLOAT dm1 = -1.;
+/* UNROLL_M=6-aware TRSM kernel.
+ * Stock generic/trsm_kernel_*.c assumes power-of-2 UNROLL_M via
+ * GEMM_UNROLL_M_SHIFT (incorrectly set to 2 for M=6) and bit masks
+ * (m & (M-1)). That overruns packed buffers and corrupts the heap —
+ * reproduces as free()/double-free in HPL panel factor (dtrsm).
+ * Pattern mirrors loongarch64/trsm_kernel_*_UNROLLN6.c for N=6.
+ */
 
-#ifdef OPENBLAS_WASM_TRSM_PROFILE
-#ifndef DOUBLE
-static unsigned long long openblas_wasm128_strsm_ln_calls = 0;
-unsigned long long openblas_wasm128_get_strsm_ln_calls(void) {
-  return openblas_wasm128_strsm_ln_calls;
-}
-void openblas_wasm128_reset_strsm_ln_calls(void) {
-  openblas_wasm128_strsm_ln_calls = 0;
-}
-#else
-static unsigned long long openblas_wasm128_dtrsm_ln_calls = 0;
-unsigned long long openblas_wasm128_get_dtrsm_ln_calls(void) {
-  return openblas_wasm128_dtrsm_ln_calls;
-}
-void openblas_wasm128_reset_dtrsm_ln_calls(void) {
-  openblas_wasm128_dtrsm_ln_calls = 0;
-}
-#endif
-#endif
+static FLOAT dm1 = -1.;
 
 #ifdef CONJ
 #define GEMM_KERNEL   GEMM_KERNEL_L
@@ -114,66 +102,11 @@ void openblas_wasm128_reset_dtrsm_ln_calls(void) {
 
 static inline void solve(BLASLONG m, BLASLONG n, FLOAT *a, FLOAT *b, FLOAT *c, BLASLONG ldc) {
 
-  FLOAT aa,  bb;
+  FLOAT aa, bb;
 
   int i, j, k;
 
-#if defined(__wasm_simd128__)
-  if (m == 2 && n == 2) {
-    FLOAT d0 = a[0];
-    FLOAT u01 = a[2];
-    FLOAT d1 = a[3];
-    FLOAT x10 = c[1] * d1;
-    FLOAT x11 = c[1 + ldc] * d1;
-    FLOAT y00 = c[0] - x10 * u01;
-    FLOAT y01 = c[ldc] - x11 * u01;
-    FLOAT x00 = y00 * d0;
-    FLOAT x01 = y01 * d0;
-    b[0] = x00;
-    b[1] = x01;
-    b[2] = x10;
-    b[3] = x11;
-    c[0] = x00;
-    c[ldc] = x01;
-    c[1] = x10;
-    c[1 + ldc] = x11;
-    return;
-  }
-  if (m == 2 && n == 1) {
-    FLOAT d0 = a[0];
-    FLOAT u01 = a[2];
-    FLOAT d1 = a[3];
-    FLOAT x10 = c[1] * d1;
-    FLOAT y00 = c[0] - x10 * u01;
-    FLOAT x00 = y00 * d0;
-    b[0] = x00;
-    b[1] = x10;
-    c[0] = x00;
-    c[1] = x10;
-    return;
-  }
-  if (m == 1 && n == 2) {
-    FLOAT d0 = a[0];
-    FLOAT x00 = c[0] * d0;
-    FLOAT x01 = c[ldc] * d0;
-    b[0] = x00;
-    b[1] = x01;
-    c[0] = x00;
-    c[ldc] = x01;
-    return;
-  }
-  if (m == 1 && n == 1) {
-    FLOAT x00 = c[0] * a[0];
-    b[0] = x00;
-    c[0] = x00;
-    return;
-  }
-#endif
-
-  a += (m - 1) * m;
-  b += (m - 1) * n;
-
-  for (i = m - 1; i >= 0; i--) {
+  for (i = 0; i < m; i++) {
 
     aa = *(a + i);
 
@@ -184,15 +117,13 @@ static inline void solve(BLASLONG m, BLASLONG n, FLOAT *a, FLOAT *b, FLOAT *c, B
       *(c + i + j * ldc) = bb;
       b ++;
 
-      for (k = 0; k < i; k ++){
+      for (k = i + 1; k < m; k ++){
 	*(c + k + j * ldc) -= bb * *(a + k);
       }
 
     }
-    a -= m;
-    b -= 2 * n;
+    a += m;
   }
-
 }
 
 #else
@@ -206,10 +137,8 @@ static inline void solve(BLASLONG m, BLASLONG n, FLOAT *a, FLOAT *b, FLOAT *c, B
   int i, j, k;
 
   ldc *= 2;
-  a += (m - 1) * m * 2;
-  b += (m - 1) * n * 2;
 
-  for (i = m - 1; i >= 0; i--) {
+  for (i = 0; i < m; i++) {
 
     aa1 = *(a + i * 2 + 0);
     aa2 = *(a + i * 2 + 1);
@@ -226,121 +155,107 @@ static inline void solve(BLASLONG m, BLASLONG n, FLOAT *a, FLOAT *b, FLOAT *c, B
       cc2 = aa1 * bb2 - aa2 * bb1;
 #endif
 
-
       *(b + 0) = cc1;
       *(b + 1) = cc2;
       *(c + i * 2 + 0 + j * ldc) = cc1;
       *(c + i * 2 + 1 + j * ldc) = cc2;
       b += 2;
 
-      for (k = 0; k < i; k ++){
+      for (k = i + 1; k < m; k ++){
 #ifndef CONJ
 	*(c + k * 2 + 0 + j * ldc) -= cc1 * *(a + k * 2 + 0) - cc2 * *(a + k * 2 + 1);
 	*(c + k * 2 + 1 + j * ldc) -= cc1 * *(a + k * 2 + 1) + cc2 * *(a + k * 2 + 0);
 #else
-	*(c + k * 2 + 0 + j * ldc) -=   cc1 * *(a + k * 2 + 0) + cc2 * *(a + k * 2 + 1);
-	*(c + k * 2 + 1 + j * ldc) -= - cc1 * *(a + k * 2 + 1) + cc2 * *(a + k * 2 + 0);
+	*(c + k * 2 + 0 + j * ldc) -= cc1 * *(a + k * 2 + 0) + cc2 * *(a + k * 2 + 1);
+	*(c + k * 2 + 1 + j * ldc) -= -cc1 * *(a + k * 2 + 1) + cc2 * *(a + k * 2 + 0);
 #endif
       }
 
     }
-    a -= m * 2;
-    b -= 4 * n;
+    a += m * 2;
   }
-
 }
 
 #endif
 
 
-int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
+int CNAME(BLASLONG m, BLASLONG n, BLASLONG k, FLOAT dummy1,
 #ifdef COMPLEX
 	   FLOAT dummy2,
 #endif
 	   FLOAT *a, FLOAT *b, FLOAT *c, BLASLONG ldc, BLASLONG offset){
 
-#ifdef OPENBLAS_WASM_TRSM_PROFILE
-#ifndef DOUBLE
-  openblas_wasm128_strsm_ln_calls += 1;
-#else
-  openblas_wasm128_dtrsm_ln_calls += 1;
-#endif
-#endif
-
-  BLASLONG i, j;
   FLOAT *aa, *cc;
   BLASLONG  kk;
+  BLASLONG  mmodM = m - (m / GEMM_UNROLL_M) * GEMM_UNROLL_M;
+  BLASLONG i, j, jj;
 
 #if 0
-  fprintf(stderr, "TRSM KERNEL LN : m = %3ld  n = %3ld  k = %3ld offset = %3ld\n",
+  fprintf(stderr, "TRSM KERNEL LT : m = %3ld  n = %3ld  k = %3ld offset = %3ld\n",
 	  m, n, k, offset);
 #endif
+
+  jj = 0;
 
   j = (n >> GEMM_UNROLL_N_SHIFT);
 
   while (j > 0) {
 
-    kk = m + offset;
+    kk = offset;
+    aa = a;
+    cc = c;
 
-    if (m & (GEMM_UNROLL_M - 1)) {
-      for (i = 1; i < GEMM_UNROLL_M; i *= 2){
-	if (m & i) {
-	  aa = a + ((m & ~(i - 1)) - i) * k * COMPSIZE;
-	  cc = c + ((m & ~(i - 1)) - i)     * COMPSIZE;
+    i = (m / GEMM_UNROLL_M);
 
-	  if (k - kk > 0) {
-	    GEMM_KERNEL(i, GEMM_UNROLL_N, k - kk, dm1,
-#ifdef COMPLEX
-			ZERO,
-#endif
-			aa + i             * kk * COMPSIZE,
-			b  + GEMM_UNROLL_N * kk * COMPSIZE,
-			cc,
-			ldc);
-	  }
+    while (i > 0) {
 
-	  solve(i, GEMM_UNROLL_N,
-		aa + (kk - i) * i             * COMPSIZE,
-		b  + (kk - i) * GEMM_UNROLL_N * COMPSIZE,
-		cc, ldc);
-
-	  kk -= i;
-	}
-      }
-    }
-
-    i = (m >> GEMM_UNROLL_M_SHIFT);
-    if (i > 0) {
-      aa = a + ((m & ~(GEMM_UNROLL_M - 1)) - GEMM_UNROLL_M) * k * COMPSIZE;
-      cc = c + ((m & ~(GEMM_UNROLL_M - 1)) - GEMM_UNROLL_M)     * COMPSIZE;
-
-      do {
-	if (k - kk > 0) {
-	  GEMM_KERNEL(GEMM_UNROLL_M, GEMM_UNROLL_N, k - kk, dm1,
+	if (kk > 0) {
+	  GEMM_KERNEL(GEMM_UNROLL_M, GEMM_UNROLL_N, kk, dm1,
 #ifdef COMPLEX
 		      ZERO,
 #endif
-		      aa + GEMM_UNROLL_M * kk * COMPSIZE,
-		      b +  GEMM_UNROLL_N * kk * COMPSIZE,
-		      cc,
-		      ldc);
+		      aa, b, cc, ldc);
 	}
 
 	solve(GEMM_UNROLL_M, GEMM_UNROLL_N,
-	      aa + (kk - GEMM_UNROLL_M) * GEMM_UNROLL_M * COMPSIZE,
-	      b  + (kk - GEMM_UNROLL_M) * GEMM_UNROLL_N * COMPSIZE,
+	      aa + kk * GEMM_UNROLL_M * COMPSIZE,
+	      b  + kk * GEMM_UNROLL_N * COMPSIZE,
 	      cc, ldc);
 
-	aa -= GEMM_UNROLL_M * k * COMPSIZE;
-	cc -= GEMM_UNROLL_M     * COMPSIZE;
-	kk -= GEMM_UNROLL_M;
-	i --;
-      } while (i > 0);
+      aa += GEMM_UNROLL_M * k * COMPSIZE;
+      cc += GEMM_UNROLL_M     * COMPSIZE;
+      kk += GEMM_UNROLL_M;
+      i --;
     }
 
-    b += GEMM_UNROLL_N * k * COMPSIZE;
+    if (mmodM) {
+      i = 4; /* largest power-of-2 edge < UNROLL_M=6 */
+      while (i > 0) {
+	if (mmodM & i) {
+	    if (kk > 0) {
+	      GEMM_KERNEL(i, GEMM_UNROLL_N, kk, dm1,
+#ifdef COMPLEX
+			  ZERO,
+#endif
+			  aa, b, cc, ldc);
+	    }
+	  solve(i, GEMM_UNROLL_N,
+		aa + kk * i             * COMPSIZE,
+		b  + kk * GEMM_UNROLL_N * COMPSIZE,
+		cc, ldc);
+
+	  aa += i * k * COMPSIZE;
+	  cc += i     * COMPSIZE;
+	  kk += i;
+	}
+	i >>= 1;
+      }
+    }
+
+    b += GEMM_UNROLL_N * k   * COMPSIZE;
     c += GEMM_UNROLL_N * ldc * COMPSIZE;
     j --;
+    jj += GEMM_UNROLL_M;
   }
 
   if (n & (GEMM_UNROLL_N - 1)) {
@@ -349,61 +264,59 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
     while (j > 0) {
       if (n & j) {
 
-	kk = m + offset;
+	kk = offset;
+	aa = a;
+	cc = c;
 
-	if (m & (GEMM_UNROLL_M - 1)) {
-	  for (i = 1; i < GEMM_UNROLL_M; i *= 2){
-	    if (m & i) {
-	      aa = a + ((m & ~(i - 1)) - i) * k * COMPSIZE;
-	      cc = c + ((m & ~(i - 1)) - i)     * COMPSIZE;
+	i = (m / GEMM_UNROLL_M);
 
-	      if (k - kk > 0) {
-		GEMM_KERNEL(i, j, k - kk, dm1,
+	while (i > 0) {
+	  if (kk > 0) {
+	    GEMM_KERNEL(GEMM_UNROLL_M, j, kk, dm1,
+#ifdef COMPLEX
+			ZERO,
+#endif
+			aa,
+			b,
+			cc,
+			ldc);
+	  }
+
+	  solve(GEMM_UNROLL_M, j,
+		aa + kk * GEMM_UNROLL_M * COMPSIZE,
+		b  + kk * j             * COMPSIZE, cc, ldc);
+
+	  aa += GEMM_UNROLL_M * k * COMPSIZE;
+	  cc += GEMM_UNROLL_M     * COMPSIZE;
+	  kk += GEMM_UNROLL_M;
+	  i --;
+	}
+
+	if (mmodM) {
+	  i = 4; /* largest power-of-2 edge < UNROLL_M=6 */
+	  while (i > 0) {
+	    if (mmodM & i) {
+	      if (kk > 0) {
+		GEMM_KERNEL(i, j, kk, dm1,
 #ifdef COMPLEX
 			    ZERO,
 #endif
-			    aa + i * kk * COMPSIZE,
-			    b  + j * kk * COMPSIZE,
-			    cc, ldc);
+			    aa,
+			    b,
+			    cc,
+			    ldc);
 	      }
 
 	      solve(i, j,
-		    aa + (kk - i) * i * COMPSIZE,
-		    b  + (kk - i) * j * COMPSIZE,
-		    cc, ldc);
+		    aa + kk * i * COMPSIZE,
+		    b  + kk * j * COMPSIZE, cc, ldc);
 
-	      kk -= i;
-	    }
+	      aa += i * k * COMPSIZE;
+	      cc += i     * COMPSIZE;
+	      kk += i;
+	      }
+	    i >>= 1;
 	  }
-	}
-
-	i = (m >> GEMM_UNROLL_M_SHIFT);
-	if (i > 0) {
-	  aa = a + ((m & ~(GEMM_UNROLL_M - 1)) - GEMM_UNROLL_M) * k * COMPSIZE;
-	  cc = c + ((m & ~(GEMM_UNROLL_M - 1)) - GEMM_UNROLL_M)     * COMPSIZE;
-
-	  do {
-	    if (k - kk > 0) {
-	      GEMM_KERNEL(GEMM_UNROLL_M, j, k - kk, dm1,
-#ifdef COMPLEX
-			  ZERO,
-#endif
-			  aa + GEMM_UNROLL_M * kk * COMPSIZE,
-			  b +  j             * kk * COMPSIZE,
-			  cc,
-			  ldc);
-	    }
-
-	    solve(GEMM_UNROLL_M, j,
-		  aa + (kk - GEMM_UNROLL_M) * GEMM_UNROLL_M * COMPSIZE,
-		  b  + (kk - GEMM_UNROLL_M) * j             * COMPSIZE,
-		  cc, ldc);
-
-	    aa -= GEMM_UNROLL_M * k * COMPSIZE;
-	    cc -= GEMM_UNROLL_M     * COMPSIZE;
-	    kk -= GEMM_UNROLL_M;
-	    i --;
-	  } while (i > 0);
 	}
 
 	b += j * k   * COMPSIZE;

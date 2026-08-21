@@ -38,27 +38,15 @@
 
 #include "common.h"
 
-static FLOAT dm1 = -1.;
+/* UNROLL_M=6-aware TRSM kernel.
+ * Stock generic/trsm_kernel_*.c assumes power-of-2 UNROLL_M via
+ * GEMM_UNROLL_M_SHIFT (incorrectly set to 2 for M=6) and bit masks
+ * (m & (M-1)). That overruns packed buffers and corrupts the heap —
+ * reproduces as free()/double-free in HPL panel factor (dtrsm).
+ * Pattern mirrors loongarch64/trsm_kernel_*_UNROLLN6.c for N=6.
+ */
 
-#ifdef OPENBLAS_WASM_TRSM_PROFILE
-#ifndef DOUBLE
-static unsigned long long openblas_wasm128_strsm_rt_calls = 0;
-unsigned long long openblas_wasm128_get_strsm_rt_calls(void) {
-  return openblas_wasm128_strsm_rt_calls;
-}
-void openblas_wasm128_reset_strsm_rt_calls(void) {
-  openblas_wasm128_strsm_rt_calls = 0;
-}
-#else
-static unsigned long long openblas_wasm128_dtrsm_rt_calls = 0;
-unsigned long long openblas_wasm128_get_dtrsm_rt_calls(void) {
-  return openblas_wasm128_dtrsm_rt_calls;
-}
-void openblas_wasm128_reset_dtrsm_rt_calls(void) {
-  openblas_wasm128_dtrsm_rt_calls = 0;
-}
-#endif
-#endif
+static FLOAT dm1 = -1.;
 
 #ifdef CONJ
 #define GEMM_KERNEL   GEMM_KERNEL_R
@@ -119,58 +107,6 @@ static inline void solve(BLASLONG m, BLASLONG n, FLOAT *a, FLOAT *b, FLOAT *c, B
   FLOAT aa,  bb;
 
   int i, j, k;
-
-#if defined(__wasm_simd128__)
-  if (m == 2 && n == 2) {
-    FLOAT d0 = b[0];
-    FLOAT l10 = b[2];
-    FLOAT d1 = b[3];
-    FLOAT x01 = c[ldc] * d1;
-    FLOAT x11 = c[1 + ldc] * d1;
-    FLOAT y00 = c[0] - x01 * l10;
-    FLOAT y10 = c[1] - x11 * l10;
-    FLOAT x00 = y00 * d0;
-    FLOAT x10 = y10 * d0;
-    a[0] = x00;
-    a[1] = x10;
-    a[2] = x01;
-    a[3] = x11;
-    c[0] = x00;
-    c[1] = x10;
-    c[ldc] = x01;
-    c[1 + ldc] = x11;
-    return;
-  }
-  if (m == 2 && n == 1) {
-    FLOAT d0 = b[0];
-    FLOAT x00 = c[0] * d0;
-    FLOAT x10 = c[1] * d0;
-    a[0] = x00;
-    a[1] = x10;
-    c[0] = x00;
-    c[1] = x10;
-    return;
-  }
-  if (m == 1 && n == 2) {
-    FLOAT d0 = b[0];
-    FLOAT l10 = b[2];
-    FLOAT d1 = b[3];
-    FLOAT x01 = c[ldc] * d1;
-    FLOAT y00 = c[0] - x01 * l10;
-    FLOAT x00 = y00 * d0;
-    a[0] = x00;
-    a[1] = x01;
-    c[0] = x00;
-    c[ldc] = x01;
-    return;
-  }
-  if (m == 1 && n == 1) {
-    FLOAT x00 = c[0] * b[0];
-    a[0] = x00;
-    c[0] = x00;
-    return;
-  }
-#endif
 
   a += (n - 1) * m;
   b += (n - 1) * n;
@@ -262,17 +198,10 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
 #endif
 	   FLOAT *a, FLOAT *b, FLOAT *c, BLASLONG ldc, BLASLONG offset){
 
-#ifdef OPENBLAS_WASM_TRSM_PROFILE
-#ifndef DOUBLE
-  openblas_wasm128_strsm_rt_calls += 1;
-#else
-  openblas_wasm128_dtrsm_rt_calls += 1;
-#endif
-#endif
-
   BLASLONG i, j;
   FLOAT *aa, *cc;
   BLASLONG  kk;
+  BLASLONG  mmodM = m - (m / GEMM_UNROLL_M) * GEMM_UNROLL_M;
 
 #if 0
   fprintf(stderr, "TRSM RT KERNEL m = %3ld  n = %3ld  k = %3ld offset = %3ld\n",
@@ -294,7 +223,7 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
 	c -= j * ldc* COMPSIZE;
 	cc  = c;
 
-	i = (m >> GEMM_UNROLL_M_SHIFT);
+	i = (m / GEMM_UNROLL_M);
 	if (i > 0) {
 
 	  do {
@@ -320,10 +249,10 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
 	  } while (i > 0);
 	}
 
-	if (m & (GEMM_UNROLL_M - 1)) {
-	  i = (GEMM_UNROLL_M >> 1);
+	if (mmodM) {
+	  i = 4; /* largest power-of-2 edge < UNROLL_M=6 */
 	  do {
-	    if (m & i) {
+	    if (mmodM & i) {
 
 	      if (k - kk > 0) {
 		GEMM_KERNEL(i, j, k - kk, dm1,
@@ -363,7 +292,7 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
       c -= GEMM_UNROLL_N * ldc * COMPSIZE;
       cc  = c;
 
-      i = (m >> GEMM_UNROLL_M_SHIFT);
+      i = (m / GEMM_UNROLL_M);
       if (i > 0) {
 	do {
 	  if (k - kk > 0) {
@@ -388,10 +317,10 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
 	} while (i > 0);
       }
 
-      if (m & (GEMM_UNROLL_M - 1)) {
-	i = (GEMM_UNROLL_M >> 1);
+      if (mmodM) {
+	i = 4; /* largest power-of-2 edge < UNROLL_M=6 */
 	do {
-	  if (m & i) {
+	  if (mmodM & i) {
 	    if (k - kk > 0) {
 	      GEMM_KERNEL(i, GEMM_UNROLL_N, k - kk, dm1,
 #ifdef COMPLEX
@@ -422,3 +351,5 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
 
   return 0;
 }
+
+
