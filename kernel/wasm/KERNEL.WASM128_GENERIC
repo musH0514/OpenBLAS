@@ -85,24 +85,28 @@ DSWAPKERNEL  = ../riscv64/swap.c
 CSWAPKERNEL  = ../riscv64/zswap.c
 ZSWAPKERNEL  = ../riscv64/zswap.c
 
-SGEMVNKERNEL = ../riscv64/gemv_n.c
-DGEMVNKERNEL = ../riscv64/gemv_n.c
+SGEMVNKERNEL = gemv_n.c
+DGEMVNKERNEL = gemv_n.c
 CGEMVNKERNEL = ../riscv64/zgemv_n.c
 ZGEMVNKERNEL = ../riscv64/zgemv_n.c
 
-SGEMVTKERNEL = ../riscv64/gemv_t.c
-DGEMVTKERNEL = ../riscv64/gemv_t.c
+SGEMVTKERNEL = gemv_t.c
+DGEMVTKERNEL = gemv_t.c
 CGEMVTKERNEL = ../riscv64/zgemv_t.c
 ZGEMVTKERNEL = ../riscv64/zgemv_t.c
 
-STRMMKERNEL	= ../generic/trmmkernel_4x4.c
+STRMMKERNEL	= ../generic/trmmkernel_8x4.c
 DTRMMKERNEL	= trmmkernel_4x4_wasm128.c
 CTRMMKERNEL	= ../generic/ztrmmkernel_2x2.c
 ZTRMMKERNEL	= ../generic/ztrmmkernel_2x2.c
 
-SGEMMKERNEL    =  gemmkernel_4x4_wasm128.c
+SGEMMKERNEL    =  gemmkernel_8x4_wasm128.c
+SGEMMINCOPY    =  ../generic/gemm_ncopy_8.c
+SGEMMITCOPY    =  ../generic/gemm_tcopy_8.c
 SGEMMONCOPY    =  ../generic/gemm_ncopy_4.c
 SGEMMOTCOPY    =  ../generic/gemm_tcopy_4.c
+SGEMMINCOPYOBJ =  sgemm_incopy$(TSUFFIX).$(SUFFIX)
+SGEMMITCOPYOBJ =  sgemm_itcopy$(TSUFFIX).$(SUFFIX)
 SGEMMONCOPYOBJ =  sgemm_oncopy$(TSUFFIX).$(SUFFIX)
 SGEMMOTCOPYOBJ =  sgemm_otcopy$(TSUFFIX).$(SUFFIX)
 

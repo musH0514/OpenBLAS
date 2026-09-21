@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "common.h"
+extern char* gotoblas_corename(void);
 
 #ifdef BUILD_KERNEL
 #include "kernelTS.h"
@@ -2108,7 +2109,8 @@ static void init_parameter(void) {
 #ifdef EXPRECISION
   TABLE_NAME.xgemm3m_p = TABLE_NAME.qgemm_p;
 #endif
-
+	
+#ifndef NO_AVX512
 {
     int l3_kb = get_l3_size();
     int l2_kb = get_l2_size();
@@ -2118,7 +2120,8 @@ static void init_parameter(void) {
     cpuid(0, &eax, &ebx, &ecx, &edx);
 
     if ((ebx == 0x68747541) && (l3_kb > 0) && (l3_kb % 32768 == 0) && (l2_kb == 1024)) { //Auth AMD
-        
+      if (strcmp(gotoblas_corename(), "cooperlake") == 0 || strcmp(gotoblas_corename(), "skylakex") == 0 || strcmp(gotoblas_corename(), "sapphirerapids") == 0) {
+
         cpuid(7, &cpuid7_eax, &cpuid7_ebx, &cpuid7_ecx, &cpuid7_edx);
         
         if (cpuid7_ebx & (1 << 16)) { // avx512 - Zen 4, 5
@@ -2140,7 +2143,9 @@ static void init_parameter(void) {
 #endif
         }
     }
+  }
 }
+#endif
 
 #if BUILD_SINGLE == 1
   TABLE_NAME.sgemm_p = ((TABLE_NAME.sgemm_p + SGEMM_DEFAULT_UNROLL_M - 1)/SGEMM_DEFAULT_UNROLL_M) * SGEMM_DEFAULT_UNROLL_M;

@@ -212,10 +212,14 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
     kk = m + offset;
 
     if (mmodM) {
+      /* Walk rem panels from the end. PoT bitmasks (m & ~(i-1))-i are wrong
+       * when UNROLL_M is not a power of two (e.g. rem=4/5 with M=6). */
+      BLASLONG pos = m;
       for (i = 1; i < GEMM_UNROLL_M; i *= 2){
 	if (mmodM & i) {
-	  aa = a + ((m & ~(i - 1)) - i) * k * COMPSIZE;
-	  cc = c + ((m & ~(i - 1)) - i)     * COMPSIZE;
+	  pos -= i;
+	  aa = a + pos * k * COMPSIZE;
+	  cc = c + pos     * COMPSIZE;
 
 	  if (k - kk > 0) {
 	    GEMM_KERNEL(i, GEMM_UNROLL_N, k - kk, dm1,
@@ -281,10 +285,12 @@ int CNAME(BLASLONG m, BLASLONG n, BLASLONG k,  FLOAT dummy1,
 	kk = m + offset;
 
 	if (mmodM) {
+	  BLASLONG pos = m;
 	  for (i = 1; i < GEMM_UNROLL_M; i *= 2){
 	    if (mmodM & i) {
-	      aa = a + ((m & ~(i - 1)) - i) * k * COMPSIZE;
-	      cc = c + ((m & ~(i - 1)) - i)     * COMPSIZE;
+	      pos -= i;
+	      aa = a + pos * k * COMPSIZE;
+	      cc = c + pos     * COMPSIZE;
 
 	      if (k - kk > 0) {
 		GEMM_KERNEL(i, j, k - kk, dm1,

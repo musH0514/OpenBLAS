@@ -3067,7 +3067,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GEMM_DEFAULT_OFFSET_B 0
 #define GEMM_DEFAULT_ALIGN (BLASLONG)0x03fffUL
 
-#define SGEMM_DEFAULT_UNROLL_M  4
+#define SGEMM_DEFAULT_UNROLL_M  8
 #define SGEMM_DEFAULT_UNROLL_N  4
 
 #define DGEMM_DEFAULT_UNROLL_M  4
@@ -3520,6 +3520,12 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DGEMM_DEFAULT_UNROLL_M  6
 #define DGEMM_DEFAULT_UNROLL_N  8
+/* SYRK/SYR2K diagonal kernels step packed A/B by GEMM_UNROLL_MN and assume
+ * that lands on both MR and NR panel boundaries (pointer a+loop*k). So MN
+ * must be a common multiple of UNROLL_M and UNROLL_N: LCM(6,8)=24.
+ * MN=6 matched MR but broke NR=8 B packs; MN=8 matched NR but stepped into
+ * the middle of MR=6 A panels (first 6 rows OK, rest wrong). See #5997. */
+#define DGEMM_DEFAULT_UNROLL_MN 24
 
 #define CGEMM_DEFAULT_UNROLL_M  8
 #define CGEMM_DEFAULT_UNROLL_N  4

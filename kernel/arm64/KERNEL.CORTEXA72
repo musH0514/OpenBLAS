@@ -6,11 +6,10 @@ include $(KERNELDIR)/KERNEL.CORTEXA57
 #
 # Stock generic/gemm_{t,n}copy_6.c packs as 4+2, not contiguous MR=6 —
 # use the panel packers. NR=8 reuses the asm dgemm_{n,t}copy_8.S.
-# No dtrmm_kernel_6x8.S yet; fall back to generic 2x2 for DTRMM.
 # Stock generic/trsm_kernel_*.c assumes power-of-2 UNROLL_M; use the
 # UNROLLM6-aware kernels (same idea as loongarch64 UNROLLN6).
 DGEMMKERNEL    =  dgemm_kernel_6x8_cortexa72.S
-DTRMMKERNEL    =  ../generic/trmmkernel_2x2.c
+DTRMMKERNEL    =  dtrmm_kernel_6x8_cortexa72.S
 
 DTRSMKERNEL_LN =  trsm_kernel_LN_UNROLLM6.c
 DTRSMKERNEL_LT =  trsm_kernel_LT_UNROLLM6.c
